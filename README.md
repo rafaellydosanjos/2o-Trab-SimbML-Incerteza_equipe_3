@@ -18,10 +18,9 @@
 
 ## 1. Variável-Alvo Binária ($y$)
 
-- **`Multa_Alta`**: Variável categórica binária que representa a gravidade financeira da infração ambiental.
-  * **`1` (Multa Alta):** Valor da autuação superior à mediana do conjunto de dados ($\text{> R\$ 96.500,00}$).
-  * **`0` (Multa Baixa):** Valor da autuação igual ou inferior à mediana ($\text{\le R\$ 96.500,00}$).
-
+* **`Multa_Alta`**: Variável categórica binária referente à gravidade financeira da infração ambiental.
+  * **`1` (Multa Alta):** Valor da autuação superior à mediana do conjunto de dados (> R$ 96.500,00).
+  * **`0` (Multa Baixa):** Valor da autuação igual ou inferior à mediana (<= R$ 96.500,00).
 ---
 
 ## 2. Atributos Explicativos e Interpretáveis ($X$)
