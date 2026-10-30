@@ -1,4 +1,4 @@
-organize por favor: # Trabalho 2: Do Simbólico à Incerteza: Pipeline
+# Trabalho 2: Do Simbólico à Incerteza: Pipeline
 
 **Disciplina:** Fundamentos de Inteligência Artificial  
 **Professor:** Edjard Mota  
