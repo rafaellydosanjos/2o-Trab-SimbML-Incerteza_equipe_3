@@ -36,9 +36,9 @@
 
 ## 3. Resumo do Pré-processamento
 - **Base de Dados:** IBAMA - Autos de Infração (2021)
-- **Total de Registros Limpos:** $9.620$ amostras
-- **Divisão de Dados:** $70\%$ Treinamento / $30\%$ Teste ($\text{random\_state} = 42$)
-- **Tratamento de Dados Ausentes:** Valores nulos em `QT_AREA` foram imputados com $0$; textos nulos foram preenchidos com categorias padrão.
+- **Total de Registros Limpos:** 9.620 amostras
+- **Divisão de Dados:** 70% Treinamento / 30% Teste (random\_state} = 42)
+- **Tratamento de Dados Ausentes:** Valores nulos em `QT_AREA` foram imputados com 0; textos nulos foram preenchidos com categorias padrão.
 - **Codificação:** Transformação das variáveis categóricas via *One-Hot Encoding* (`pd.get_dummies`).
 ---
 
