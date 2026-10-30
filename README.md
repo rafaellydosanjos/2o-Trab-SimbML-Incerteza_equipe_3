@@ -1,8 +1,8 @@
 # Trabalho 2: Do Simbólico à Incerteza: Pipeline
 
-**Disciplina:** Fundamentos de Inteligência Artificial  
-**Professor:** Edjard Mota  
-**Repositório Oficial:** 2o-Trab-SimbML-Incerteza_equipe_3
+**Disciplina:** Fundamentos de Inteligência Artificial    
+**Professor:** Edjard Mota    
+**Repositório Oficial:** 2o-Trab-SimbML-Incerteza_equipe_3  
 
 ## Registo Acadêmico
 - Adrya Vieira
