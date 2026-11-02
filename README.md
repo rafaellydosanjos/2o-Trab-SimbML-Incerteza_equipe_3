@@ -11,8 +11,8 @@ Trabalho Integrado de Fundamentos de IA (Prof. Edjard Mota).
 
 | Fonte | Conjunto usado | Ano | Data de acesso |
 |---|---|---|---|
-| Ibama — Portal de Dados Abertos (https://dadosabertos.ibama.gov.br) | Autos de Infração (Fiscalização) | 2021 | __/__/2026 |
-| INMET — Portal do INMET (https://portal.inmet.gov.br/dadoshistoricos) | Dados Históricos Anuais, Estações Automáticas | 2021 | __/__/2026 |
+| Ibama — Portal de Dados Abertos (https://dadosabertos.ibama.gov.br) | Autos de Infração (Fiscalização) | 2021 | 29/10/2026 |
+| INMET — Portal do INMET (https://portal.inmet.gov.br/dadoshistoricos) | Dados Históricos Anuais, Estações Automáticas | 2021 | 01/11/2026 |
 
 > Os dados originais do Ibama trazem nome e CPF/CNPJ de quem foi multado. **Não** estão neste repositório;
 > baixe-os nos links acima. A tabela `dados/tabela_p4.csv` já vem sem esses dados pessoais.
