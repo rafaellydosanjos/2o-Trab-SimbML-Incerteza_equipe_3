@@ -14,6 +14,8 @@ Trabalho Integrado de Fundamentos de IA (Prof. Edjard Mota).
 * Miguel Bezerra
 * Rafaelly Dos Anjos
 
+---
+
 ## Fontes dos dados
 
 | Fonte | Conjunto usado | Ano | Data de acesso |
