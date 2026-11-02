@@ -5,7 +5,13 @@ Trabalho Integrado de Fundamentos de IA (Prof. Edjard Mota).
 **Pergunta do trabalho:** um auto de infração do Ibama por desmatamento terá multa de valor elevado?
 
 **Domínio:** P4 — Meio Ambiente (desmatamento + INMET)
-**Equipe:** _(preencher: nomes dos 6 membros)_
+**Equipe:*
+* Adrya Vieira
+* Hagata Rodrigues
+* Luís Abdalla
+* Maria Penha
+* Miguel Bezerra
+* Rafaelly Dos Anjos
 
 ## Fontes dos dados
 
