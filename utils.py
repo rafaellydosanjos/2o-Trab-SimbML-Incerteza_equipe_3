@@ -1,14 +1,8 @@
-"""
-utils.py - funcoes auxiliares da equipe (carregar, limpar, discretizar, separar treino/teste).
-
-Quem criou: Membro 1. Os outros membros podem importar daqui:
-    from utils import SEED, carregar_csv, separar_treino_teste
-"""
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-SEED = 42  # semente fixa: garante que todo mundo obtem os mesmos resultados
+SEED = 42  # semente fixa
 np.random.seed(SEED)
 
 

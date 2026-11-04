@@ -1,20 +1,3 @@
-"""
-etapa1_p4.py - Etapa 1 do P4 (Meio Ambiente)
-
-Pergunta do trabalho:
-    "Um auto de infração do IBAMA por desmatamento terá multa de valor elevado?"
-
-O que este script faz (em ordem):
-    1. Lê os autos de infração do Ibama (2021) e fica só com os autos de DESMATAMENTO.
-    2. Lê o INMET (clima por estado e mês) e junta com cada auto.
-    3. Cria a variável-alvo: Multa_Alta (1 = acima da mediana, 0 = abaixo).
-    4. Salva a tabela pronta em dados/tabela_p4.csv (para o grupo e para o notebook).
-    5. Treina árvores de decisão (scikit-learn, com ENTROPIA) com validação cruzada 5-fold.
-    6. Desenha a árvore e salva em arvore_etapa1.png (na pasta principal).
-
-Como rodar (na pasta do trabalho):
-    python etapa1_p4.py
-"""
 import os
 import sys
 
@@ -32,7 +15,7 @@ np.random.seed(42)
 # ------------------------------------------------------------------ configuração
 CAMINHO_AUTOS = sys.argv[1] if len(sys.argv) > 1 else "dados/auto_infracao_2021.csv"
 PASTA_INMET = sys.argv[2] if len(sys.argv) > 2 else "dados/inmet"
-CACHE_INMET = "dados/inmet_uf_mes.csv"   # o INMET demora ~1 min; guardamos o resultado para não refazer
+CACHE_INMET = "dados/inmet_uf_mes.csv" 
 
 ATRIBUTOS = ["BIOMA", "TP_PESSOA_INFRATOR", "TIPO_ACAO", "CHUVA_FAIXA", "TEMP_FAIXA", "UMID_FAIXA"]
 
@@ -118,7 +101,8 @@ os.makedirs("dados", exist_ok=True)
 COLUNAS_TABELA = ["UF", "MUNICIPIO", "DAT_HORA_AUTO_INFRACAO", "ano", "mes", "VAL_AUTO_INFRACAO",
                   "BIOMA", "TP_PESSOA_INFRATOR", "TIPO_ACAO",
                   "precip_mm", "temp_media", "umid_media", "n_estacoes",
-                  "CHUVA_FAIXA", "TEMP_FAIXA", "UMID_FAIXA", "Multa_Alta"]
+                  "CHUVA_FAIXA", "TEMP_FAIXA", "UMID_FAIXA", "Multa_Alta",
+                  "EFEITO_MEIO_AMBIENTE"]
 # (de propósito, NÃO salvamos nome nem CPF/CNPJ de quem foi multado)
 df[COLUNAS_TABELA].to_csv("dados/tabela_p4.csv", index=False, encoding="utf-8-sig")
 print(f"\nTabela salva em dados/tabela_p4.csv ({df.shape[0]} linhas, {len(COLUNAS_TABELA)} colunas)")

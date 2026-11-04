@@ -1,9 +1,8 @@
-# Dados originais (grandes e com dados pessoais) - não vão para o GitHub
-dados/auto_infracao_*.csv
+dados/auto_infracao_2021.csv
 dados/inmet/
 dados/inmet_uf_mes.csv
-diagnostico.txt
 
 # Arquivos automáticos do Python/Jupyter
 __pycache__/
 .ipynb_checkpoints/
+ 
