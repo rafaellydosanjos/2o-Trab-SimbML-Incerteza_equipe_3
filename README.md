@@ -56,3 +56,74 @@ Todos os códigos usam `np.random.seed(42)` (definido em `utils.py`), então os 
 | `etapa1.ipynb` … `etapa6.ipynb` | Um notebook por etapa do pipeline |
 | `em.py`, `fuzzy.py` | Algoritmo EM (Etapa 4) e sistema fuzzy (Etapa 6) |
 | `relatorio/` | Relatório em LaTeX |
+
+# Etapas 3 e 4 (Parte 1) — Probabilidade e Naive Bayes
+
+**Pergunta de classificação:** “Um auto de infração do IBAMA por desmatamento terá multa de valor elevado?”
+
+## Escopo individual
+
+- **Etapa 3:** distribuição conjunta (quatro eventos), axiomas, marginais e condicionais, regra da cadeia, Teorema de Bayes e verificação matemática de independência condicional.
+- **Etapa 4, Parte 1:** MLE (Bernoulli), MAP (Beta(2,2)), Naive Bayes implementado do zero, validação cruzada com cinco folds e teste externo.
+- O **EM e seu gráfico** são responsabilidade da Etapa 4, Parte 2 (outro integrante) e **não** estão incluídos neste código.
+
+## Arquivos
+
+- `trabalho_etapas_3_4_v6_1_bayes_corrigido.py`: implementação central, utilizada pelos notebooks.
+- `etapa3_probabilidade_v6_1.ipynb`: demonstração da Etapa 3.
+- `etapa4_parte1_nb_v6_1.ipynb`: demonstração da Etapa 4 (Parte 1).
+- `auto_infracao_2021.csv`: arquivo de dados do IBAMA utilizado no trabalho (**disponibilizado separadamente pela equipe**, caso não esteja versionado no repositório).
+
+## Dependências
+
+Python 3.10+ com `numpy`, `pandas` e `scikit-learn`.
+
+```bash
+python -m pip install numpy pandas scikit-learn
+```
+
+## Como reproduzir
+
+1. Coloque o CSV `auto_infracao_2021.csv` **na mesma pasta** do arquivo Python.
+2. Execute no terminal:
+
+   ```bash
+   python trabalho_etapas_3_4_v6_1_bayes_corrigido.py
+   ```
+
+   Ou, no Google Colab, envie os dois arquivos para `/content` e execute:
+
+   ```python
+   %run /content/trabalho_etapas_3_4_v6_1_bayes_corrigido.py
+   ```
+
+3. Para o formato de notebooks exigido pelo trabalho, execute os notebooks fornecidos, mantendo o arquivo `.py` e o CSV na mesma pasta.
+
+A saída principal apresenta apenas os cálculos essenciais da Etapa 3, as estimativas MLE/MAP e as métricas do Naive Bayes. Não há geração de gráfico nesta parte individual.
+
+## Preparação e avaliação
+
+- Os autos são selecionados por `TIPO_INFRACAO=Flora` e por expressões da descrição compatíveis com desmatamento; **esse filtro textual é heurístico**.
+- Por padrão, `Multa_Alta` assume 1 se a multa ultrapassar a **mediana do respectivo conjunto de treino** e 0 caso contrário.
+- Se a Etapa 1 fixou um limiar em reais, edite `LIMIAR_ETAPA1_CONFIRMADO` no script, substituindo `None` pelo valor adotado; o limite fixo passa a ser usado no teste externo e nos folds.
+- A separação treino/teste é feita por processo (`NUM_PROCESSO`, quando disponível) para reduzir vazamento de informações. O conjunto externo de teste não participa da validação cruzada.
+- A comparação de independência condicional usa a **fatoração matemática das probabilidades observadas**; não emprega o teste exato de Fisher nem conclui causalidade.
+
+## Resultados de referência (configuração padrão, CSV fornecido)
+
+- Treino: **1.529** registros; teste: **660**; **41** atributos binários.
+- Mediana do treino: **R$ 145.000,00**.
+- Naive Bayes: **85,91%** de acurácia no teste, **85,84%** de F1.
+- Validação cruzada (5 folds): **83,71%** de acurácia média (desvio-padrão **2,29 p.p.**).
+
+## Integração com a equipe — verificar antes do relatório final
+
+Confirmar com o responsável pela Etapa 1 que a **definição numérica de “multa elevada”** e os **critérios de seleção de autos de desmatamento** são os mesmos usados no restante do projeto. A pergunta, por si só, não especifica esse limiar. O projeto completo também contempla INMET e as demais etapas, que não fazem parte deste módulo individual.
+
+## Interpretação causal versus diagnóstica (correção V6.1)
+
+No contexto dos autos, **P(multa alta | Amazônia)** acompanha uma direção causal **plausível** (características do auto podem influenciar o valor). **P(Amazônia | multa alta)** percorre a direção diagnóstica. O Naive Bayes adota uma **fatoração generativa** P(atributos | classe) para calcular P(classe | atributos); isso **não** atribui causalidade à classe. Por serem dados observacionais, as probabilidades mostram associação, não demonstram que o bioma cause multas maiores.
+
+Na execução de referência, **P(Amazônia | multa alta) = 0,8581** e **P(multa alta | Amazônia) = 0,6838**, calculadas apenas nos dados de treinamento. Consulte `texto_relatorio_bayes_v6_1.md` para o parágrafo sugerido ao relatório.
+
+**Rastreabilidade:** a V6.1 modifica apenas a apresentação e interpretação de Bayes, sem alterar o treinamento, a base, as métricas ou as outras etapas. Diferenças em `alteracoes_v6_para_v6_1_bayes.patch`.
