@@ -1,25 +1,21 @@
 # ==================================================================
-# ETAPAS 3 E 4 (PARTE 1) — PROBABILIDADE E NAIVE BAYES
-# Base: versão 3 com validação confiável e saída resumida.
+# ETAPAS 3 E 4 (PARTE 1) - PROBABILIDADE E NAIVE BAYES
+# Base: dados/tabela_p4.csv (a mesma tabela das Etapas 1, 5 e 6).
 # - Escopo: MLE, MAP e Naive Bayes implementado do zero.
-# - Validação cruzada apenas no treino e agrupada por NUM_PROCESSO.
-# - Sem algoritmo EM: etapa 4 (parte 2) pertence a outro integrante.
-# - Métricas externas: acurácia, precisão, recall e F1 do NB puro.
-# - V4: demonstra MLE/MAP e esclarece Bayes/LPO.
-# - V5: registra a pergunta da classificação e corrige imports auxiliares.
-# - V6 (entrega): verifica independência por fatoração de probabilidades,
-#   sem testes estatísticos extras; permite usar limiar fixo da Etapa 1.
-# - V6.1: corrige a interpretação causal/diagnóstica de Bayes, sem mudar cálculos.
-# OBS.: a classe Multa_Alta usa a mediana do treino de cada avaliação;
-# sua definição pode variar ligeiramente entre os folds.
+# - Rótulo igual ao da Etapa 1: Multa_Alta = 1 quando a multa é maior
+#   que a mediana de TODOS os autos da tabela (R$ 100.000,00).
+# - Treino 70% e teste 30% (estratificado, semente 42), como na Etapa 1.
+# - Validação cruzada de 5 partes apenas no treino.
+# - Sem algoritmo EM: a Etapa 4 (parte 2) está no notebook do EM.
 # ==================================================================
 
-import re
+import os
+import urllib.request
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import GroupKFold, GroupShuffleSplit
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.metrics import (
     f1_score, precision_score, recall_score,
     balanced_accuracy_score, confusion_matrix
@@ -28,164 +24,126 @@ from sklearn.metrics import (
 # ==================================================================
 # 1. INICIALIZAÇÃO E DETERMINISMO
 # ==================================================================
-# Semente fixa para resultados reproduzíveis.
-np.random.seed(42)
+SEED = 42
+np.random.seed(SEED)
 
-# Compatível com execução de .py e células no Google Colab.
 PASTA_PROJETO = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
-CAMINHO_CSV = str(PASTA_PROJETO / 'auto_infracao_2021.csv')
 
-# Pergunta de classificação binária informada pela equipe (Atualização 5).
+# Se a tabela não estiver em nenhuma pasta, ela é baixada do GitHub do grupo.
+URL_DADOS = ("https://raw.githubusercontent.com/rafaellydosanjos/"
+             "2o-Trab-SimbML-Incerteza_equipe_3/main/dados/")
+
+
+def obter_tabela(nome='tabela_p4.csv'):
+    """Procura a tabela em algumas pastas. Se não achar, baixa do GitHub."""
+    pastas = [Path.cwd(), Path.cwd() / 'dados', Path.cwd().parent / 'dados',
+              PASTA_PROJETO, PASTA_PROJETO / 'dados', PASTA_PROJETO.parent / 'dados',
+              Path('/content'), Path('/content/dados')]
+    for pasta in pastas:
+        if (pasta / nome).is_file():
+            return str(pasta / nome)
+    os.makedirs('dados', exist_ok=True)
+    destino = os.path.join('dados', nome)
+    urllib.request.urlretrieve(URL_DADOS + nome, destino)
+    print('Baixado do GitHub:', nome)
+    return destino
+
+
+CAMINHO_CSV = obter_tabela()
+
 PERGUNTA_CLASSIFICACAO = (
     'Um auto de infração do IBAMA por desmatamento terá multa de valor elevado?'
 )
 ALVO_ATUAL = 'Multa_Alta'  # 1 = sim; 0 = não
-# A pergunta não determina qual valor em reais caracteriza "elevado".
-# Com None, o alvo é > mediana calculada em cada conjunto de treino.
-# Se a Etapa 1 tiver um limiar fixo, insira-o em reais (ex.: 150000.0).
-# Nesse caso, a regra será aplicada efetivamente ao holdout e a todos os folds.
+
+# Atributos da Etapa 1 (todos categóricos).
+ATRIBUTOS_CATEGORICOS = ['BIOMA', 'TP_PESSOA_INFRATOR', 'TIPO_ACAO',
+                         'CHUVA_FAIXA', 'TEMP_FAIXA', 'UMID_FAIXA']
+
+# Limiar fixo da Etapa 1 (a mediana de todos os autos da tabela).
+# É preenchido logo depois que a tabela é lida.
 LIMIAR_ETAPA1_CONFIRMADO = None
+
 
 def formatar_reais(valor):
     """Usa a convenção brasileira de separadores em valores monetários."""
     return 'R$ ' + f'{valor:,.2f}'.replace(',', '_').replace('.', ',').replace('_', '.')
 
-TIPO_FILTRO = 'Flora'
-PADRAO_DESMATAMENTO = (r'desmat|corte raso|supress[aã]o de (?:vegeta|florest)|derrub'
-                       r'|(?:destruir|danificar|destruiu|danificou|cortar|cortou)'
-                       r'.{0,60}(?:florest|vegeta|mata|árvore|arvore)')
-
-def extrair_hectares(descricao):
-    """Extrai a área numérica do texto livre utilizando Expressões Regulares."""
-    achou = re.search(r'(\d{1,6}(?:[.,]\d+)?)\s*(?:hectares?|ha\b)',
-                      str(descricao), flags=re.IGNORECASE)
-    if not achou:
-        return np.nan
-    return float(achou.group(1).replace(',', '.'))
 
 # ==================================================================
 # 2. PIPELINE: PRÉ-PROCESSAMENTO AJUSTADO EXCLUSIVAMENTE NO TREINO
 # ==================================================================
 def carregar_dados_brutos(caminho=CAMINHO_CSV):
-    """Lê o CSV, filtra o domínio (Desmatamento) e devolve os dados em bruto."""
-    bruto = pd.read_csv(caminho, sep=';', low_memory=False)
+    """Lê a tabela_p4.csv (já filtrada na Etapa 1) e devolve os autos."""
+    tabela = pd.read_csv(caminho, encoding='utf-8-sig')
+    tabela['VALOR_NUMERICO'] = pd.to_numeric(tabela['VAL_AUTO_INFRACAO'], errors='coerce')
+    tabela = tabela[tabela['VALOR_NUMERICO'].notna()].reset_index(drop=True)
+    return tabela
 
-    valor = pd.to_numeric(bruto['VAL_AUTO_INFRACAO'].str.replace(',', '.'), errors='coerce')
-    descricao = bruto['DES_AUTO_INFRACAO'].fillna('').astype(str)
-    
-    # Filtra rigorosamente para isolar autos de Desmatamento
-    eh_desmatamento = ((bruto['TIPO_INFRACAO'] == TIPO_FILTRO)
-                       & descricao.str.contains(PADRAO_DESMATAMENTO, case=False, regex=True))
-
-    manter = eh_desmatamento & valor.notna()
-    
-    df_filtrado = bruto[manter].copy()
-    df_filtrado['VALOR_NUMERICO'] = valor[manter]
-    return df_filtrado
 
 def preparar_particoes_ml(X_tr_raw, X_te_raw, y_tr_cont, y_te_cont):
-    """Ajusta o pré-processamento usando SOMENTE o treino recebido.
+    """Transforma as colunas em números 0/1 usando SOMENTE o treino recebido.
 
-    Usada no holdout e em cada fold da validação cruzada, evitando reutilizar
-    mediana do alvo, cortes de área e categorias ajustados em outros folds.
+    Usada no holdout e em cada fold da validação cruzada. As colunas do
+    one-hot são definidas pelo treino; categoria nova no teste fica toda 0.
     """
-    # ALVO: se definido pela Etapa 1, usa o limiar fixo em todas as partições.
-    # Caso contrário, calcula a mediana apenas no treino desta partição.
-    if LIMIAR_ETAPA1_CONFIRMADO is None:
-        limiar = float(y_tr_cont.median())
-    else:
-        limiar = float(LIMIAR_ETAPA1_CONFIRMADO)
-        if not np.isfinite(limiar) or limiar < 0:
-            raise ValueError('O limiar da Etapa 1 deve ser um número não negativo e finito.')
+    limiar = float(LIMIAR_ETAPA1_CONFIRMADO)
+    if not np.isfinite(limiar) or limiar < 0:
+        raise ValueError('O limiar da Etapa 1 deve ser um número não negativo e finito.')
     y_tr = (y_tr_cont > limiar).astype(int)
     y_te = (y_te_cont > limiar).astype(int)
 
-    # 4. DISCRETIZAÇÃO DA ÁREA: Os quantis são aprendidos apenas no Treino
-    area_tr = X_tr_raw['DES_AUTO_INFRACAO'].apply(extrair_hectares)
-    cortes = area_tr.quantile([1/3, 2/3]).to_numpy()
-
-    def discretizar_area(area_serie):
-        df_area = pd.DataFrame(index=area_serie.index)
-        df_area['AREA_sem_informacao'] = area_serie.isna().astype(int)
-        df_area['AREA_pequena'] = (area_serie <= cortes[0]).astype(int)
-        df_area['AREA_media'] = ((area_serie > cortes[0]) & (area_serie <= cortes[1])).astype(int)
-        df_area['AREA_grande'] = (area_serie > cortes[1]).astype(int)
-        return df_area
-
-    area_te = X_te_raw['DES_AUTO_INFRACAO'].apply(extrair_hectares)
-    df_area_tr = discretizar_area(area_tr)
-    df_area_te = discretizar_area(area_te)
-
-    # 5. ONE-HOT ENCODING: Prevenção contra colunas ausentes no Teste
     def limpar_categoricas(df_cat):
-        cat = df_cat[['UF', 'DS_BIOMAS_ATINGIDOS', 'TP_PESSOA_INFRATOR']].fillna('Nao informado').copy()
-        cat['DS_BIOMAS_ATINGIDOS'] = cat['DS_BIOMAS_ATINGIDOS'].str.split(',').str[0].str.strip()
-        return cat
+        return df_cat[ATRIBUTOS_CATEGORICOS].fillna('Nao informado').astype(str)
 
     cat_tr = limpar_categoricas(X_tr_raw)
     cat_te = limpar_categoricas(X_te_raw)
 
-    # Treino dita o schema dimensional (quais colunas existem)
     X_tr_dum = pd.get_dummies(cat_tr).astype(int)
-    
-    # Teste é forçado a alinhar com as colunas do Treino. 
-    # Se houver um bioma novo no teste, ele é ignorado (fill_value=0)
     X_te_dum = pd.get_dummies(cat_te).astype(int)
     X_te_dum = X_te_dum.reindex(columns=X_tr_dum.columns, fill_value=0)
 
-    # 6. Agrupar as matrizes finais
-    X_tr_final = pd.concat([X_tr_dum, df_area_tr], axis=1)
-    X_te_final = pd.concat([X_te_dum, df_area_te], axis=1)
-    
-    # Adicionamos o alvo ao dataset completo para a Etapa 3 (Probabilidades Conjuntas)
-    df_treino_completo = X_tr_final.copy()
+    # Tabela do treino com o alvo, usada na Etapa 3 (probabilidades conjuntas)
+    df_treino_completo = X_tr_dum.copy()
     df_treino_completo['Multa_Alta'] = y_tr
 
-    return (X_tr_final.to_numpy(), X_te_final.to_numpy(),
+    return (X_tr_dum.to_numpy(), X_te_dum.to_numpy(),
             y_tr.to_numpy(), y_te.to_numpy(),
-            X_tr_final.columns, df_treino_completo, limiar)
+            X_tr_dum.columns, df_treino_completo, limiar)
 
 
-def identificar_grupos(df):
-    """Agrupa autos do mesmo processo para evitar seu uso em treino e avaliação.
-
-    Caso NUM_PROCESSO esteja ausente, cada linha recebe seu próprio grupo:
-    não há informação suficiente para afirmar que pertence a outro processo.
-    """
-    processo = df['NUM_PROCESSO'].astype('string').str.strip()
-    tem_processo = processo.notna() & processo.ne('')
-    grupo = pd.Series(
-        [f"registro:{i}" for i in range(len(df))],
-        index=df.index, dtype='string'
-    )
-    grupo.loc[tem_processo] = 'processo:' + processo.loc[tem_processo]
-    return grupo.to_numpy(dtype=str)
-
-
-def construir_pipeline_ml(df_bruto):
-    """Separa processos em 70/30 antes de ajustar parâmetros; reserva teste para o final."""
-    if df_bruto.empty:
-        raise ValueError("Não há dados após os filtros de desmatamento.")
-    X_raw = df_bruto[['DES_AUTO_INFRACAO', 'UF', 'DS_BIOMAS_ATINGIDOS', 'TP_PESSOA_INFRATOR']]
-    y_raw_cont = df_bruto['VALOR_NUMERICO']
-
+def dividir_treino_teste(df_bruto, y_cont=None):
+    """Separa 70% para treino e 30% para teste, estratificado pela classe."""
+    y = (df_bruto['VALOR_NUMERICO'] > LIMIAR_ETAPA1_CONFIRMADO).astype(int)
     indices = np.arange(len(df_bruto))
-    grupos = identificar_grupos(df_bruto)
-    divisao = GroupShuffleSplit(n_splits=1, test_size=0.30, random_state=42)
-    indices_tr, indices_te = next(divisao.split(indices, groups=grupos))
-    assert not (set(grupos[indices_tr]) & set(grupos[indices_te])), (
-        "Um mesmo processo não pode aparecer em treino e teste."
-    )
-    X_tr_raw, X_te_raw = X_raw.iloc[indices_tr], X_raw.iloc[indices_te]
-    y_tr_cont, y_te_cont = y_raw_cont.iloc[indices_tr], y_raw_cont.iloc[indices_te]
+    idx_tr, idx_te = train_test_split(indices, test_size=0.30, random_state=SEED, stratify=y)
+    return np.sort(idx_tr), np.sort(idx_te)
 
-    resultado = preparar_particoes_ml(X_tr_raw, X_te_raw, y_tr_cont, y_te_cont)
-    treino_bruto = df_bruto.iloc[indices_tr].copy()
+
+def construir_pipeline_ml(df_bruto, idx_tr, idx_te):
+    """Monta as matrizes do treino e do teste; o teste só é usado no final."""
+    if df_bruto.empty:
+        raise ValueError('A tabela está vazia.')
+    X_raw = df_bruto[ATRIBUTOS_CATEGORICOS]
+    y_raw_cont = df_bruto['VALOR_NUMERICO']
+    resultado = preparar_particoes_ml(
+        X_raw.iloc[idx_tr], X_raw.iloc[idx_te],
+        y_raw_cont.iloc[idx_tr], y_raw_cont.iloc[idx_te])
+    treino_bruto = df_bruto.iloc[idx_tr].copy()
     return (*resultado, treino_bruto)
+
 
 # Execução do pipeline externo (holdout)
 df_bruto = carregar_dados_brutos()
-X_tr, X_te, y_tr, y_te, ATRIBUTOS, df_treino, LIMIAR_MULTA, df_treino_bruto = construir_pipeline_ml(df_bruto)
+LIMIAR_ETAPA1_CONFIRMADO = float(df_bruto['VALOR_NUMERICO'].median())
+# Confere que o rótulo é o mesmo da coluna Multa_Alta da tabela da Etapa 1.
+assert ((df_bruto['VALOR_NUMERICO'] > LIMIAR_ETAPA1_CONFIRMADO).astype(int)
+        == df_bruto['Multa_Alta']).all(), 'Rótulo diferente do da Etapa 1.'
+
+IDX_TR, IDX_TE = dividir_treino_teste(df_bruto)
+df_teste_bruto = df_bruto.iloc[IDX_TE].copy()
+(X_tr, X_te, y_tr, y_te, ATRIBUTOS, df_treino,
+ LIMIAR_MULTA, df_treino_bruto) = construir_pipeline_ml(df_bruto, IDX_TR, IDX_TE)
 
 
 # ==================================================================
@@ -247,6 +205,7 @@ def probabilidade_condicional(dist_conjunta, prob_marginal_condicao, condicao=2)
         where=divisor != 0
     )
 
+
 def regra_da_cadeia(df, a, b, c, va=1, vb=1, vc=1):
     """Confere P(A,B,C) = P(A) P(B|A) P(C|A,B)."""
     if df.empty:
@@ -279,6 +238,7 @@ def teorema_bayes(p_e_dado_h, p_h, p_e):
     if resultado > 1 + 1e-12:
         raise ValueError("As probabilidades informadas são incompatíveis com o Teorema de Bayes.")
     return float(min(resultado, 1.0))
+
 
 def independencia(df, a, b, tolerancia_numerica=1e-12):
     """Verifica fatoração da distribuição empírica P(A,B) = P(A)P(B).
@@ -360,6 +320,7 @@ def estimador_map(k, N, alpha=2, beta=2):
         raise ValueError("A moda posterior não está definida para esses parâmetros.")
     return (k_array + alpha - 1) / denominador
 
+
 class NaiveBayesRaiz:
     def fit(self, X, y):
         X = np.asarray(X)
@@ -375,7 +336,7 @@ class NaiveBayesRaiz:
         for j, c in enumerate(self.classes_):
             X_c = X[y == c]
             N_c = len(X_c)
-            # Suavização de Laplace no Prior: impede np.log(0) caso uma classe seja muito rara
+            # Suavização de Laplace no prior: impede np.log(0) caso uma classe seja muito rara
             self.log_prior_[j] = np.log((N_c + 1) / (n_exemplos + n_classes))
             self.p_atributo_[j] = estimador_map(X_c.sum(axis=0), N_c)
         return self
@@ -383,8 +344,7 @@ class NaiveBayesRaiz:
     def _log_scores(self, X):
         X = np.asarray(X)
         p = self.p_atributo_
-        # Otimização BLAS/LAPACK: O produto matricial estrito sem laços "for".
-        # Isto poupa a memória RAM de ter que alocar matrizes temporárias de multiplicação.
+        # Produto matricial, sem laços: soma dos logs das probabilidades dos atributos.
         return X @ (np.log(p) - np.log(1 - p)).T + np.log(1 - p).sum(axis=1) + self.log_prior_
 
     def predict(self, X):
@@ -392,7 +352,7 @@ class NaiveBayesRaiz:
 
     def predict_proba(self, X):
         scores = self._log_scores(X)
-        scores = scores - scores.max(axis=1, keepdims=True)  # Previne underflow de floats
+        scores = scores - scores.max(axis=1, keepdims=True)  # previne underflow
         exp = np.exp(scores)
         return exp / exp.sum(axis=1, keepdims=True)
 
@@ -400,33 +360,28 @@ class NaiveBayesRaiz:
 def acuracia(y_real, y_previsto):
     return np.mean(y_real == y_previsto)
 
+
 def validacao_cruzada(df_bruto_treino, k=5, modelo=NaiveBayesRaiz):
-    """Validação sem vazamento: folds somente no treino bruto do holdout.
+    """Validação sem vazamento: as partes são feitas só dentro do treino.
 
-    A cada fold, aprende do zero: mediana do valor para o rótulo, cortes da
-    área e categorias one-hot. Teste externo de 30% nunca participa da CV.
+    A cada parte, o one-hot é aprendido do zero só com o treino da parte.
+    O teste externo de 30% nunca participa da validação cruzada.
 
-    Retorna acurácias dos folds e baselines de classe majoritária do TREINO
-    de cada fold (a classe jamais é escolhida pelo conjunto de validação).
+    Retorna as acurácias de cada parte e os baselines (classe mais comum
+    do treino de cada parte, nunca escolhida pela validação).
     """
     if len(df_bruto_treino) < k or k < 2:
         raise ValueError("k deve estar entre 2 e a quantidade de amostras do treino.")
-    X_raw = df_bruto_treino[['DES_AUTO_INFRACAO', 'UF', 'DS_BIOMAS_ATINGIDOS', 'TP_PESSOA_INFRATOR']]
+    X_raw = df_bruto_treino[ATRIBUTOS_CATEGORICOS]
     y_cont = df_bruto_treino['VALOR_NUMERICO']
+    y_classe = (y_cont > LIMIAR_ETAPA1_CONFIRMADO).astype(int)
 
     acuracias, baselines = [], []
-    # Agrupamento por processo também dentro dos folds: casos correlacionados
-    # não aparecem simultaneamente no ajuste e na validação.
-    grupos = identificar_grupos(df_bruto_treino)
-    if len(np.unique(grupos)) < k:
-        raise ValueError("Não há processos distintos suficientes para esta quantidade de folds.")
-    divisao = GroupKFold(n_splits=k)
-    for idx_tr, idx_val in divisao.split(X_raw, groups=grupos):
-        assert not (set(grupos[idx_tr]) & set(grupos[idx_val]))
-        X_fit, X_val = X_raw.iloc[idx_tr], X_raw.iloc[idx_val]
-        y_fit_cont, y_val_cont = y_cont.iloc[idx_tr], y_cont.iloc[idx_val]
+    divisao = StratifiedKFold(n_splits=k, shuffle=True, random_state=SEED)
+    for idx_tr, idx_val in divisao.split(X_raw, y_classe):
         X_fit_num, X_val_num, y_fit, y_val, _, _, _ = preparar_particoes_ml(
-            X_fit, X_val, y_fit_cont, y_val_cont
+            X_raw.iloc[idx_tr], X_raw.iloc[idx_val],
+            y_cont.iloc[idx_tr], y_cont.iloc[idx_val]
         )
         m = modelo().fit(X_fit_num, y_fit)
         acuracias.append(float(acuracia(y_val, m.predict(X_val_num))))
@@ -453,18 +408,20 @@ def imprimir_metricas_teste(nome, modelo, X_teste, y_teste):
 # ==================================================================
 # 5. ETAPA 3: APLICAÇÃO PRÁTICA DOS FUNDAMENTOS DE PROBABILIDADE
 # ==================================================================
+VAR_A = 'BIOMA_Amazonia'
+VAR_B = 'TP_PESSOA_INFRATOR_PJ'
+VAR_C = 'Multa_Alta'
+
+
 def executar_etapa3(df):
     """
-    Demonstra os requisitos da Etapa 3 usando somente variáveis presentes
-    no conjunto de autos de infração do IBAMA.
+    Demonstra os requisitos da Etapa 3 (versão longa).
 
     A = ocorrência no bioma Amazônia
     B = infrator pessoa jurídica (PJ)
-    C = multa alta (valor acima da mediana do treino)
+    C = multa alta (valor acima da mediana da tabela)
     """
-    A = 'DS_BIOMAS_ATINGIDOS_Amazonia'
-    B = 'TP_PESSOA_INFRATOR_PJ'
-    C = 'Multa_Alta'
+    A, B, C = VAR_A, VAR_B, VAR_C
 
     ausentes = [col for col in (A, B, C) if col not in df.columns]
     if ausentes:
@@ -478,28 +435,21 @@ def executar_etapa3(df):
     print("Variáveis utilizadas:")
     print("A = auto associado ao bioma Amazônia (1 = sim; 0 = não)")
     print("B = infrator pessoa jurídica (1 = sim; 0 = não)")
-    print("C = multa alta (1 = acima da mediana do treino; 0 = caso contrário)")
+    print("C = multa alta (1 = acima da mediana da tabela; 0 = caso contrário)")
     print(f"Amostras válidas: {len(dados)}")
 
-    # 1) Eventos atômicos e distribuição conjunta P(A, B).
     conjunta = distribuicao_conjunta(dados, A, B)
-    print("\n1. Distribuição conjunta P(A, B) — quatro eventos atômicos:")
-    print(pd.DataFrame(
-        conjunta,
-        index=['A=0', 'A=1'],
-        columns=['B=0', 'B=1']
-    ).to_string(float_format=lambda x: f"{x:.4f}"))
+    print("\n1. Distribuição conjunta P(A, B) - quatro eventos atômicos:")
+    print(pd.DataFrame(conjunta, index=['A=0', 'A=1'], columns=['B=0', 'B=1'])
+          .to_string(float_format=lambda x: f"{x:.4f}"))
     print(f"Soma das probabilidades: {conjunta.sum():.6f}")
     print(f"Não negatividade (todas >= 0): {bool(np.all(conjunta >= 0))}")
     print(f"Normalização P(Ω)=1: {np.isclose(conjunta.sum(), 1.0)}")
     print("Evento impossível: P(∅)=0 (nenhuma observação pertence ao evento vazio).")
-    print(
-        "Aditividade para eventos disjuntos: "
-        f"P(A=0) = P(A=0,B=0) + P(A=0,B=1) = "
-        f"{conjunta[0, 0]:.4f} + {conjunta[0, 1]:.4f} = {conjunta[0, :].sum():.4f}"
-    )
+    print("Aditividade para eventos disjuntos: "
+          f"P(A=0) = P(A=0,B=0) + P(A=0,B=1) = "
+          f"{conjunta[0, 0]:.4f} + {conjunta[0, 1]:.4f} = {conjunta[0, :].sum():.4f}")
 
-    # 2) Marginais e condicionais.
     marginal_A = probabilidade_marginal(conjunta, 1)
     marginal_B = probabilidade_marginal(conjunta, 2)
     cond_A_dado_B = probabilidade_condicional(conjunta, marginal_B, condicao=2)
@@ -510,19 +460,12 @@ def executar_etapa3(df):
     print(f"P(B=0)={marginal_B[0]:.4f} | P(B=1)={marginal_B[1]:.4f}")
     print("\nProbabilidades condicionais:")
     print("P(A | B), linhas=A e colunas=B:")
-    print(pd.DataFrame(
-        cond_A_dado_B,
-        index=['A=0', 'A=1'],
-        columns=['B=0', 'B=1']
-    ).to_string(float_format=lambda x: f"{x:.4f}"))
+    print(pd.DataFrame(cond_A_dado_B, index=['A=0', 'A=1'], columns=['B=0', 'B=1'])
+          .to_string(float_format=lambda x: f"{x:.4f}"))
     print("P(B | A), linhas=B e colunas=A:")
-    print(pd.DataFrame(
-        cond_B_dado_A.T,
-        index=['B=0', 'B=1'],
-        columns=['A=0', 'A=1']
-    ).to_string(float_format=lambda x: f"{x:.4f}"))
+    print(pd.DataFrame(cond_B_dado_A.T, index=['B=0', 'B=1'], columns=['A=0', 'A=1'])
+          .to_string(float_format=lambda x: f"{x:.4f}"))
 
-    # 3) Regra da cadeia para três variáveis.
     p_cadeia, p_direta = regra_da_cadeia(dados, A, B, C, 1, 1, 1)
     print("\n3. Regra da cadeia:")
     print("P(A=1, B=1, C=1) = P(A=1) * P(B=1|A=1) * P(C=1|A=1,B=1)")
@@ -530,7 +473,6 @@ def executar_etapa3(df):
     print(f"Frequência conjunta direta:   {p_direta:.6f}")
     print(f"Valores coincidem: {np.isclose(p_cadeia, p_direta, atol=1e-12)}")
 
-    # 4) Teorema de Bayes: probabilidade de multa alta dado bioma Amazônia.
     p_A_dado_C = float(dados.loc[dados[C] == 1, A].mean()) if (dados[C] == 1).any() else np.nan
     p_C = float(dados[C].mean())
     p_A = float(dados[A].mean())
@@ -544,16 +486,9 @@ def executar_etapa3(df):
         print(f"P(Amazônia | multa alta): {p_A_dado_C:.4f}")
         print(f"P(multa alta | Amazônia), por Bayes: {p_C_dado_A_bayes:.4f}")
         print(f"P(multa alta | Amazônia), frequência direta: {p_C_dado_A_direto:.4f}")
-        print('Interpretação de Bayes (causal vs. diagnóstica):')
-        print('  P(multa alta|Amazônia) segue a direção causal plausível')
-        print('  (características do auto influenciam o valor da multa).')
-        print('  P(Amazônia|multa alta) é diagnóstica: parte do efeito para a característica.')
-        print('  O NB usa a forma generativa P(atributos|classe) e a inverte por Bayes;')
-        print('  isso é modelagem, não prova de causalidade.')
     else:
         print("\n4. Teorema de Bayes: não foi possível calcular, pois o evento observado tem probabilidade zero.")
 
-    # 5) Independência condicional A ⟂ B | C.
     print("\n5. Independência condicional entre bioma Amazônia e tipo PJ, dada a classe Multa_Alta:")
     resultados = independencia_condicional(dados, A, B, C)
     imprimir_independencia_condicional(resultados, detalhado=True)
@@ -562,8 +497,8 @@ def executar_etapa3(df):
 
 
 def executar_etapa3_resumo(df):
-    """Resumo legível dos cálculos; versão extensa permanece em executar_etapa3."""
-    A, B, C = 'DS_BIOMAS_ATINGIDOS_Amazonia', 'TP_PESSOA_INFRATOR_PJ', 'Multa_Alta'
+    """Resumo legível dos cálculos; a versão longa é executar_etapa3."""
+    A, B, C = VAR_A, VAR_B, VAR_C
     dados = df[[A, B, C]].dropna()
     conjunta = distribuicao_conjunta(dados, A, B)
     marginal_A = probabilidade_marginal(conjunta, 1)
@@ -586,11 +521,10 @@ def executar_etapa3_resumo(df):
     print(f'Regra da cadeia: {produto:.5f} (frequência direta: {direta:.5f})')
     print(f'Bayes: P(Amazônia|multa alta)={p_A_C:.4f}')
     print(f'Bayes: P(multa alta|Amazônia)={p_C_A:.4f}')
-    print('Independência condicional — fatoração P(A,B|C)=P(A|C)P(B|C):')
+    print('Independência condicional - fatoração P(A,B|C)=P(A|C)P(B|C):')
     imprimir_independencia_condicional(indep)
     print('Nota: a comparação descreve a amostra, sem inferir causalidade.')
 
-    # V6.1: direção causal plausível do domínio ≠ fatoração generativa do NB.
     print('Interpretação de Bayes (causal vs. diagnóstica):')
     print('  P(multa alta|Amazônia) segue a direção causal plausível')
     print('  (características do auto influenciam o valor da multa).')
@@ -602,7 +536,7 @@ def executar_etapa3_resumo(df):
 
 
 # ==================================================================
-# 6. AJUSTES DE CONFORMIDADE — DEMONSTRAÇÃO E INTEGRAÇÃO
+# 6. DEMONSTRAÇÃO E INTEGRAÇÃO
 # ==================================================================
 def demonstrar_mle_map(df):
     """Mostra MLE e MAP/Beta(2,2) com a mesma variável usada pelo NB.
@@ -610,7 +544,7 @@ def demonstrar_mle_map(df):
     A amostra usa APENAS o treino. k conta autos do bioma Amazônia na
     classe Multa_Alta=1; N é o número de autos dessa classe no treino.
     """
-    variavel = 'DS_BIOMAS_ATINGIDOS_Amazonia'
+    variavel = VAR_A
     classe = 'Multa_Alta'
     if variavel not in df.columns or classe not in df.columns:
         raise KeyError('Faltam as colunas necessárias para a demonstração MLE/MAP.')
@@ -633,19 +567,14 @@ def demonstrar_mle_map(df):
 
 
 def verificar_alinhamento_etapa1():
-    """Documenta a pergunta recebida sem alegar integração não verificada."""
+    """Mostra que a Etapa 4 usa a mesma tabela e o mesmo rótulo da Etapa 1."""
     print('\nINTEGRAÇÃO COM A ETAPA 1 | Definição do problema')
-    print(f'Pergunta informada: {PERGUNTA_CLASSIFICACAO}')
-    print('Amostra: autos de Flora com descrição compatível com desmatamento.')
+    print(f'Pergunta: {PERGUNTA_CLASSIFICACAO}')
+    print(f'Tabela: {CAMINHO_CSV} ({len(df_bruto)} autos)')
     print(f'Alvo binário: {ALVO_ATUAL} (1=valor elevado; 0=valor não elevado)')
-    if LIMIAR_ETAPA1_CONFIRMADO is None:
-        print('Regra operacional: valor da multa > mediana de cada treino/fold.')
-        print(f'Limiar do treino externo: {formatar_reais(LIMIAR_MULTA)}')
-        print('Regra definida com a Etapa 1: limiar = mediana do treino.')
-    else:
-        print(f'Regra operacional: valor da multa > {formatar_reais(LIMIAR_MULTA)} (fixo).')
-        print('Limiar da Etapa 1 aplicado ao treino, teste e a todos os folds.')
-    print('Filtro textual de desmatamento é heurístico (expressões na descrição do auto).')
+    print(f'Regra: valor da multa > {formatar_reais(LIMIAR_MULTA)} (mediana de todos os autos da tabela).')
+    print('O rótulo calculado aqui é igual à coluna Multa_Alta da tabela da Etapa 1 (conferido por assert).')
+    print(f'Treino: {len(df_treino_bruto)} autos | teste externo: {len(df_teste_bruto)} autos (30%, estratificado).')
 
 
 if __name__ == "__main__":
@@ -654,25 +583,17 @@ if __name__ == "__main__":
     print(f'Limiar de multa alta: {formatar_reais(LIMIAR_MULTA)}')
 
     executar_etapa3_resumo(df_treino)
-
-    # AJUSTE 1: demonstrar estimadores já implementados, sem alterar o NB.
     demonstrar_mle_map(df_treino)
-
-    # AJUSTE 3: não atribuir à Etapa 1 uma definição que não foi fornecida.
     verificar_alinhamento_etapa1()
 
     print('\nETAPA 4 (PARTE 1) | Naive Bayes')
     nb = NaiveBayesRaiz().fit(X_tr, y_tr)
     acs, bases = validacao_cruzada(df_treino_bruto, k=5)
-    print(f'Validação cruzada (5 folds, apenas treino): {np.mean(acs):.2%} '
+    print(f'Validação cruzada (5 partes, apenas treino): {np.mean(acs):.2%} '
           f'± {np.std(acs, ddof=1):.2%} | baseline={np.mean(bases):.2%}')
-    print('Teste externo (30%, separado por processo):')
-
-    def resumo_modelo(nome, modelo):
-        previsto = modelo.predict(X_te)
-        print(f'  {nome:<10} | acurácia={acuracia(y_te, previsto):.2%} | '
-              f'precisão={precision_score(y_te, previsto, zero_division=0):.2%} | '
-              f'recall={recall_score(y_te, previsto, zero_division=0):.2%} | '
-              f'F1={f1_score(y_te, previsto, zero_division=0):.2%}')
-
-    resumo_modelo('NB puro', nb)
+    print('Teste externo (30%):')
+    previsto = nb.predict(X_te)
+    print(f'  NB puro | acurácia={acuracia(y_te, previsto):.2%} | '
+          f'precisão={precision_score(y_te, previsto, zero_division=0):.2%} | '
+          f'recall={recall_score(y_te, previsto, zero_division=0):.2%} | '
+          f'F1={f1_score(y_te, previsto, zero_division=0):.2%}')
