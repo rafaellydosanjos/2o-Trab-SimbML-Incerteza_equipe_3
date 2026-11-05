@@ -102,7 +102,7 @@ COLUNAS_TABELA = ["UF", "MUNICIPIO", "DAT_HORA_AUTO_INFRACAO", "ano", "mes", "VA
                   "BIOMA", "TP_PESSOA_INFRATOR", "TIPO_ACAO",
                   "precip_mm", "temp_media", "umid_media", "n_estacoes",
                   "CHUVA_FAIXA", "TEMP_FAIXA", "UMID_FAIXA", "Multa_Alta",
-                  "EFEITO_MEIO_AMBIENTE"]
+                  "EFEITO_MEIO_AMBIENTE", "NUM_PROCESSO"]
 # (de propósito, NÃO salvamos nome nem CPF/CNPJ de quem foi multado)
 df[COLUNAS_TABELA].to_csv("dados/tabela_p4.csv", index=False, encoding="utf-8-sig")
 print(f"\nTabela salva em dados/tabela_p4.csv ({df.shape[0]} linhas, {len(COLUNAS_TABELA)} colunas)")

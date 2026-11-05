@@ -36,21 +36,26 @@ Trabalho Integrado de Fundamentos de IA (Prof. Edjard Mota).
 
 ## Como reproduzir
 
-1. Instale as bibliotecas:
+1. Clonar o repositório:  
+   ```bash
+   git clone [https://github.com/rafaellydosanjos/2o-Trab-SimbML-Incerteza_equipe_3.git](https://github.com/rafaellydosanjos/2o-Trab-SimbML-Incerteza_equipe_3.git)
+   cd 2o-Trab-SimbML-Incerteza_equipe_3
+
+2. Instale as bibliotecas:
    ```
    pip install -r requirements.txt
    ```
-2. Baixe os dados e coloque assim:
+3. Baixe os dados e coloque assim:
    ```
    dados/auto_infracao_2021.csv     (Ibama)
    dados/inmet/2021.zip             (INMET, sem descompactar)
    ```
-3. Gere a tabela e a árvore da Etapa 1:
+4. Gere a tabela e a árvore da Etapa 1:
    ```
    python etapa1_p4.py
    ```
    Isso cria `dados/tabela_p4.csv` (usada por todas as etapas) e `arvore_etapa1.png`.
-4. Abra os notebooks na ordem (`jupyter notebook`): `etapa1.ipynb` → … → `etapa6.ipynb`.
+5. Abra os notebooks na ordem (`jupyter notebook`): `etapa1.ipynb` → … → `etapa6.ipynb`.
 
 Todos os códigos usam semente fixa (`np.random.seed(42)`), então os resultados se repetem.
 
