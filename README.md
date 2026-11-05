@@ -32,60 +32,7 @@ Trabalho Integrado de Fundamentos de IA (Prof. Edjard Mota).
 > Os dados originais do Ibama trazem nome e CPF/CNPJ de quem foi multado. Eles **não** estão neste
 > repositório (baixe nos links acima). A `tabela_p4.csv` já vem sem esses dados pessoais.
 
-## As 6 etapas em palavras simples
-
-### Etapa 1 — Árvore de decisão (aprendizado simbólico)
-**A ideia:** uma sequência de perguntas, como no jogo dos 20 perguntas ("o auto foi na Amazônia? o infrator é pessoa física?"). O computador aprende sozinho quais perguntas fazer e em que ordem, usando a **entropia** (uma medida de "bagunça") e o **ganho de informação** (quanto uma pergunta organiza a bagunça).
-**No nosso trabalho:** a árvore prevê se a multa será alta, com 6 atributos: bioma, tipo de pessoa, tipo de ação, chuva, temperatura e umidade. Fizemos a árvore do zero, comparamos com a do scikit-learn e validamos com 5-fold (cerca de 73% de acerto no teste).
-**Também mostramos uma limitação da lógica:** um exemplo novo pode derrubar uma regra que parecia certa (monotonicidade).
-
-### Etapa 2 — Aprendizado linear
-**A ideia:** encontrar a reta (ou o plano) que melhor liga os atributos a um número. É a **regressão linear**, ajustada pelo **gradiente descendente** (dar passinhos para errar cada vez menos). A **regularização** (Ridge/L2) evita exageros. A **regressão logística** transforma o resultado em uma probabilidade de "sim" ou "não".
-**No nosso trabalho:** relacionar os atributos ao valor da multa e classificar multa alta ou baixa.
-
-### Etapa 3 — Probabilidade
-**A ideia:** a base de tudo que vem depois. Probabilidade **conjunta** (duas coisas juntas), **marginal**, **condicional** ("a chance de A, sabendo B"), **regra da cadeia** e o **Teorema de Bayes**, que permite inverter uma condicional. Também discute por que a lógica clássica não consegue dizer "70% de chance".
-**No nosso trabalho:** cálculos com variáveis do próprio domínio, como a chance de multa alta sabendo o bioma.
-
-### Etapa 4 — Aprendizado probabilístico e EM
-**A ideia:** aprender probabilidades a partir dos dados. **MLE** escolhe o valor que deixa os dados mais prováveis; **MAP** faz o mesmo partindo de um palpite inicial (o *prior*). O **Naive Bayes** classifica multiplicando probabilidades, supondo que os atributos são independentes dada a classe. O algoritmo **EM** lida com uma **variável oculta**, que não vemos nos dados: ele alterna entre estimar e atualizar até estabilizar.
-**No nosso trabalho:** Naive Bayes para prever multa alta e comparação com e sem variável oculta (`em.py`).
-
-### Etapa 5 — Redes Bayesianas
-**A ideia:** um desenho (grafo) em que cada seta diz "esta variável influencia aquela", com tabelas de probabilidade (CPT). Permite perguntar: *"sabendo o que já sei, qual a probabilidade de multa alta?"*. Também mostra quando duas variáveis são independentes (**d-separação**) e economiza números em relação à tabela completa.
-**No nosso trabalho:** uma rede com 4 a 6 variáveis do domínio (por exemplo bioma, tipo de ação e multa), com inferência feita do zero e comparada com a biblioteca `pgmpy`.
-
-### Etapa 6 — Lógica fuzzy
-**A ideia:** em vez de "sim ou não", trabalha com **graus** de 0 a 1 e com palavras ("risco baixo", "risco alto"). As regras ficam legíveis, como "SE o risco é alto ENTÃO a urgência é alta" (sistema **Mamdani**).
-**No nosso trabalho:** as probabilidades da Etapa 5 entram no sistema fuzzy, que devolve uma **decisão suave e explicável**, comparada com a decisão "rígida" (corte em 0,5) (`fuzzy.py`).
-
-## Como as etapas se conectam
-
-```
-Dados oficiais (Ibama + INMET)
-        |
-   Etapa 1: Árvore  ->  Etapa 2: Regressão  ->  Etapa 3: Probabilidade
-                                                        |
-                              Etapa 4: Naive Bayes + EM  <-
-                                                        |
-                              Etapa 5: Rede Bayesiana    <-
-                                                        |
-                              Etapa 6: Sistema Fuzzy     <-
-                                                        |
-                       Decisão final interpretável
-```
-As decisões da Etapa 1 e as probabilidades da Etapa 4 são reaproveitadas nas Etapas 5 e 6.
-
-## Quem fez o quê
-
-| Membro | Etapa principal | Papel extra | Nome |
-|---|---|---|---|
-| 1 | Etapa 1 — Árvore de decisão | Dados e GitHub | _(preencher)_ |
-| 2 | Etapa 2 — Regressão e logística | Slides da apresentação | _(preencher)_ |
-| 3 | Etapa 3 — Probabilidade | Relatório em LaTeX | _(preencher)_ |
-| 4 | Etapa 4 — Naive Bayes e EM | — | _(preencher)_ |
-| 5 | Etapa 5 — Rede Bayesiana | — | _(preencher)_ |
-| 6 | Etapa 6 — Fuzzy | Integração final do pipeline | _(preencher)_ |
+---
 
 ## Como reproduzir
 
