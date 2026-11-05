@@ -69,6 +69,8 @@ Todos os códigos usam semente fixa (`np.random.seed(42)`), então os resultados
 | `arvore_etapa1.png` | Figura da árvore da Etapa 1 |
 | `relatorio/` | Relatório em LaTeX |
 
+---
+
 ## Limitações que declaramos
 
 - O portal do Ibama traz **registros de fiscalização** (autos e multas), e não a área desmatada medida por satélite. Por isso "desmatamento" aqui quer dizer **autos de infração por desmatamento**.
