@@ -1,0 +1,483 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage[margin=2cm]{geometry}
+\usepackage{graphicx, amsmath, booktabs, float}
+\usepackage[alf]{abntex2cite}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc}
+\emergencystretch=2em
+\setlength{\parskip}{2pt}
+
+\title{Trabalho Integrado de Fundamentos de IA\\ \large Do Simbólico à Incerteza}
+\author{Adrya Vieira, Hagata Rodrigues, Luís Abdalla, \\
+Maria Penha, Miguel Bezerra, Rafaelly Dos Anjos}
+\date{}
+
+\begin{document}
+\maketitle
+
+%% ------------------------------------------------------------
+\section{Introdução e dados}
+A pergunta que orienta o trabalho é: um auto de infração do IBAMA por desmatamento terá multa de valor elevado? Os dados vêm dos autos de infração do IBAMA em 2021 \cite{ibama2021} e dos dados históricos das estações automáticas do INMET, também de 2021 \cite{inmet2021}. Nome e CPF ou CNPJ de quem foi multado não foram usados nem guardados.
+
+Do arquivo original ficaram só os autos de desmatamento, sem os cancelados ou excluídos e com multa simples (sem advertência). A Tabela~\ref{tab:funil} mostra quantos autos sobram em cada passo.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lr}
+\toprule
+Passo & Autos \\
+\midrule
+Todos os autos do arquivo & 9663 \\
+Infrações de Flora & 4142 \\
+Marcados como desmatamento & 2780 \\
+Sem autos cancelados ou excluídos & 2641 \\
+Somente multa simples & 2639 \\
+Com valor de multa maior que zero & 2639 \\
+\bottomrule
+\end{tabular}
+\caption{Seleção dos autos de infração.}
+\label{tab:funil}
+\end{table}
+
+A variável-alvo \texttt{Multa\_Alta} vale 1 quando o valor da multa passa da mediana, R\$ 100.000,00: são 1326 autos de multa baixa (50,2\%) e 1313 de multa alta (49,8\%).
+
+Os seis atributos são fáceis de explicar. Três vêm do IBAMA: o bioma (\texttt{BIOMA}), o tipo de pessoa autuada (\texttt{TP\_PESSOA\_INFRATOR}) e o tipo de ação de fiscalização (\texttt{TIPO\_ACAO}). Três vêm do INMET: chuva, temperatura e umidade, em três faixas do mesmo tamanho (\texttt{CHUVA\_FAIXA}, \texttt{TEMP\_FAIXA} e \texttt{UMID\_FAIXA}). Cada auto recebe o clima da sua unidade da federação e do seu mês, com a média das estações (estações com menos de cerca de 15 dias de medição no mês foram descartadas). Autos sem clima ficaram em \texttt{sem\_dado} (178 na chuva e 100 na temperatura e na umidade), e 21 autos estão sem bioma.
+
+%% ------------------------------------------------------------
+\section{Etapa 1 -- Árvore de decisão}
+
+\subsection{Entropia e ganho de informação}
+A entropia de um conjunto $S$ é $H(S) = -\sum_c p_c \log_2 p_c$, e o ganho de um atributo $A$ é $G(S,A) = H(S) - \sum_v \frac{|S_v|}{|S|}\,H(S_v)$. Na raiz há 2639 autos (1326 de multa baixa e 1313 de multa alta), então $H(S) = 1{,}0000$. Dividindo pelo bioma, os subgrupos são Amazônia (1600 autos, $H = 0{,}9091$), Mata Atlântica (410, $0{,}7219$), Caatinga (278, $0{,}3731$), Cerrado (277, $0{,}9599$), Pantanal (36, $0{,}9911$), Pampa (11, $0$) e Costeiro e Marinho (6, $0$). Os 21 autos sem bioma não entram em nenhum subgrupo. Assim,
+\begin{multline*}
+G(S,\text{BIOMA}) = 1{,}0000 - \Big[\tfrac{1600}{2639}(0{,}9091) + \tfrac{410}{2639}(0{,}7219) + \tfrac{278}{2639}(0{,}3731) \\
++ \tfrac{277}{2639}(0{,}9599) + \tfrac{36}{2639}(0{,}9911)\Big] \approx 0{,}1831 .
+\end{multline*}
+A Tabela~\ref{tab:ganho} mostra os ganhos dos três primeiros níveis, seguindo o ramo da Amazônia e, dentro dele, o das pessoas físicas. Nos outros ramos do segundo nível, o atributo escolhido foi \texttt{CHUVA\_FAIXA} na Caatinga (ganho 0,0054), \texttt{TIPO\_ACAO} no Cerrado (0,0435), \texttt{UMID\_FAIXA} na Mata Atlântica (0,0399) e \texttt{CHUVA\_FAIXA} no Pantanal (0,3879, de um grupo de só 36 autos). Pampa e Costeiro e Marinho já são folhas de multa baixa.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llr}
+\toprule
+Grupo (autos; entropia) & Atributo & Ganho \\
+\midrule
+Todos (2639; 1,0000) & \texttt{BIOMA} & \textbf{0,1831} \\
+ & \texttt{TEMP\_FAIXA} & 0,0440 \\
+ & \texttt{UMID\_FAIXA} & 0,0392 \\
+ & \texttt{CHUVA\_FAIXA} & 0,0288 \\
+ & \texttt{TP\_PESSOA\_INFRATOR} & 0,0256 \\
+ & \texttt{TIPO\_ACAO} & 0,0008 \\
+\midrule
+Amazônia (1600; 0,9091) & \texttt{TP\_PESSOA\_INFRATOR} & \textbf{0,0223} \\
+ & \texttt{TEMP\_FAIXA} & 0,0220 \\
+ & \texttt{UMID\_FAIXA} & 0,0161 \\
+ & \texttt{CHUVA\_FAIXA} & 0,0102 \\
+ & \texttt{TIPO\_ACAO} & 0,0034 \\
+\midrule
+Amazônia, pessoa física (1460; 0,8788) & \texttt{TEMP\_FAIXA} & \textbf{0,0206} \\
+ & \texttt{UMID\_FAIXA} & 0,0202 \\
+ & \texttt{CHUVA\_FAIXA} & 0,0078 \\
+ & \texttt{TIPO\_ACAO} & 0,0015 \\
+\bottomrule
+\end{tabular}
+\caption{Ganho de informação nos três primeiros níveis. Em negrito, o atributo escolhido.}
+\label{tab:ganho}
+\end{table}
+
+\subsection{Árvore do zero, scikit-learn e validação cruzada}
+A árvore foi feita do zero, de forma recursiva: se todos os autos do grupo têm a mesma classe, vira folha; se não sobram atributos ou a profundidade máxima foi atingida, vira folha com a classe mais comum; caso contrário, escolhe o atributo de maior ganho e cria um ramo por valor. Ela foi comparada com a do scikit-learn (critério de entropia, dois ramos por divisão). Com 80\% dos autos para treino e 20\% para teste e profundidade 4, a árvore própria teve acurácia de 0,757 no treino e 0,752 no teste, e a do scikit-learn teve 0,750 no teste. Sem limite de profundidade, a árvore própria foi para 0,772 no treino e caiu para 0,735 no teste (sobreajuste). O enunciado espera de 85 a 92\% no treino sem poda; não chegamos lá porque os seis atributos têm poucas categorias, e muitos autos com os mesmos valores têm multas de classes diferentes.
+
+Na validação cruzada de 5 partes (semente 42, Tabela~\ref{tab:prof}), a árvore própria teve a melhor acurácia média na profundidade 4 (74,0\%), e a do scikit-learn ficou perto de 73,6\% nas profundidades 3 e 5. O bioma é o atributo mais importante: a Amazônia tem 1081 de 1600 autos de multa alta (67,6\%), contra 38,3\% no Cerrado, 20,0\% na Mata Atlântica e 7,2\% na Caatinga. O tipo de ação quase não ajuda (ganho de 0,0008).
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+Profundidade & 1 & 2 & 3 & 4 & 5 & 6 \\
+\midrule
+Árvore própria & 0,714 & 0,723 & 0,731 & \textbf{0,740} & 0,735 & 0,732 \\
+scikit-learn & 0,715 & 0,726 & 0,736 & 0,734 & 0,736 & 0,735 \\
+\bottomrule
+\end{tabular}
+\caption{Acurácia média na validação cruzada de 5 partes.}
+\label{tab:prof}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[height=0.85\textheight,keepaspectratio]{figuras/arvore_do_zero.png}
+\caption{Três primeiros níveis da árvore feita do zero. $H$ é a entropia; laranja é maioria de multa baixa, azul de multa alta.}
+\label{fig:arvore}
+\end{figure}
+
+\subsection{Limitações da lógica: monotonicidade}
+Na lógica clássica, se uma conclusão foi provada a partir de um conjunto de fatos, acrescentar novos fatos nunca derruba essa conclusão. Isso se chama monotonicidade. Se $KB \models \alpha$, então $KB \cup \{\beta\} \models \alpha$ para qualquer $\beta$. O aprendizado a partir de dados não funciona assim: a regra é tirada de exemplos, e um exemplo novo pode contradizê-la.
+
+O exemplo clássico são os cisnes. Uma árvore aprendida com quatro cisnes brancos (Europa, Europa, América e Ásia) prevê que um cisne da Oceania é branco. Ao acrescentar um único cisne preto da Oceania, a árvore é refeita e a previsão passa a ser preto. A conclusão anterior foi retirada, e na lógica clássica isso não pode acontecer.
+
+O mesmo ocorre com os autos do IBAMA. Na árvore da Figura~\ref{fig:arvore}, o ramo Pampa tem 11 autos, todos de multa baixa (entropia 0), e a regra aprendida é ``auto no Pampa tem multa baixa''. Se chegasse um único auto do Pampa com multa alta, o grupo passaria a ter 12 autos, com entropia $-\tfrac{11}{12}\log_2\tfrac{11}{12} - \tfrac{1}{12}\log_2\tfrac{1}{12} = 0{,}414$. O ramo deixaria de ser folha e a árvore precisaria escolher outro atributo para separar os dois casos. O mesmo vale para o Costeiro e Marinho, com 6 autos de multa baixa. Regras com poucos autos são frágeis: na Mata Atlântica, o ramo de umidade ``sem dado'' tem um único auto, de multa alta, e a árvore passa a prever multa alta para esse caso, embora 80\% dos autos do bioma tenham multa baixa.
+
+A conclusão é que uma árvore de decisão guarda uma hipótese que vale para os dados vistos até agora. Ela é revisável, e por isso mais próxima do raciocínio com incerteza que da dedução. Isso motiva as Etapas 3 a 6, em que a crença em uma conclusão é um número que muda quando chegam novas evidências.
+
+%% ------------------------------------------------------------
+\section{Etapa 2 -- Aprendizado linear}
+O alvo contínuo é $\log(1+\text{valor da multa})$, porque os valores vão de poucos reais a milhões. Os atributos são chuva, temperatura e umidade do mês, bioma, tipo de pessoa, tipo de ação e UF (a UF não estava na árvore da Etapa 1; entrou porque melhora a regressão). A separação é 80\% treino e 20\% teste (semente 42), com faltantes preenchidos por valores do treino. Para a regressão, ficaram de fora os autos de valor zero e o 1\% de maiores multas (limite de R\$ 10.059.080,00, calculado no treino), porque multas de dezenas de milhões dominavam o $R^2$ de poucos autos do teste; sobraram 2089 autos de treino e 523 de teste.
+
+A regressão simples usou a fórmula fechada com o atributo mais correlacionado com o alvo (\texttt{UF\_PA}). A múltipla foi feita pela fórmula fechada e por gradiente descendente do zero, com os mesmos pesos e o mesmo $R^2$ do scikit-learn. No Ridge, o $\lambda$ ($=24{,}2$) foi escolhido por validação cruzada de 5 partes no treino, sem usar o teste (Figura~\ref{fig:ridge}). A regressão logística foi feita do zero (sigmoide e gradiente) para a pergunta da Etapa 1, com todos os autos: acertou 77,08\% no teste, igual ao scikit-learn, contra 50,19\% de quem sempre prevê a classe mais comum. Sem a UF, a acurácia cai para 71,97\% e o $R^2$ da múltipla para 0,25.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Modelo & Esperado & Do zero & scikit-learn \\
+\midrule
+Regressão linear simples ($R^2$) & 0,55--0,65 & 0,044 & 0,044 \\
+Múltipla, fórmula fechada ($R^2$) & 0,70--0,80 & 0,392 & 0,392 \\
+Múltipla, gradiente descendente ($R^2$) & 0,70--0,80 & 0,392 & -- \\
+Ridge, $\lambda$ ótimo ($R^2$) & 0,72--0,82 & 0,392 & 0,392 \\
+Regressão logística (acurácia) & 78--85\% & 77,08\% & 77,08\% \\
+\bottomrule
+\end{tabular}
+\caption{Resultados da Etapa 2 no teste e faixa esperada no enunciado.}
+\label{tab:etapa2}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{figuras/ridge_coeficientes.png}
+\caption{Coeficientes do Ridge em função de $\lambda$ (os seis maiores). A linha tracejada marca o $\lambda$ escolhido.}
+\label{fig:ridge}
+\end{figure}
+
+O $R^2$ e a acurácia ficaram abaixo da faixa esperada, mas não por erro de implementação: a fórmula fechada, o gradiente descendente e o scikit-learn chegam ao mesmo resultado. O valor de uma multa por desmatamento depende sobretudo da área desmatada, e a tabela não traz essa coluna. O clima do INMET é um valor por estado e mês, repetido em muitos autos, e explica pouco. O Ridge não ajudou porque, com 2089 autos e poucos atributos, não há sobreajuste a corrigir.
+
+%% ------------------------------------------------------------
+\section{Etapa 3 -- Probabilidade}
+A Etapa 3 descreve com probabilidades os 1847 autos de treino (70\% dos 2639, separação estratificada, semente 42). A análise é só descritiva: não prova independência na população nem causa e efeito. Foram escolhidas duas variáveis binárias: $A$, que vale 1 para o bioma Amazônia, e $B$, que vale 1 para pessoa jurídica. A Tabela~\ref{tab:conjunta} mostra a distribuição conjunta, com os quatro eventos atômicos (soma 1).
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+ & $B=0$ (outros) & $B=1$ (pessoa jurídica) \\
+\midrule
+$A=0$ (outros biomas) & 0,3124 & 0,0661 \\
+$A=1$ (Amazônia) & 0,5679 & 0,0536 \\
+\bottomrule
+\end{tabular}
+\caption{Distribuição conjunta $P(A,B)$ no treino.}
+\label{tab:conjunta}
+\end{table}
+
+As marginais saem da soma da tabela: $P(A{=}1)=0{,}6215$ e $P(B{=}1)=0{,}1197$. A condicional é $P(A\mid B)=P(A,B)/P(B)$; por exemplo, $P(A{=}1\mid B{=}1)=0{,}0536/0{,}1197\approx 0{,}4480$. A regra da cadeia, $P(A,B,C)=P(A)\,P(B\mid A)\,P(C\mid A,B)$, com $C$ igual a multa alta, deu 0,02003 para $A=B=C=1$, o mesmo valor da contagem direta. Pelo Teorema de Bayes, $P(C\mid A)=P(A\mid C)\,P(C)/P(A)$: entre os autos de multa alta, 84,0\% são da Amazônia, e entre os da Amazônia, 67,3\% têm multa alta (0,6725, igual à contagem direta). $P(\text{multa alta}\mid\text{Amazônia})$ segue uma direção de causa plausível, e $P(\text{Amazônia}\mid\text{multa alta})$ é uma leitura de diagnóstico.
+
+Para a independência condicional, $A$ e $B$ são independentes dada a classe $C$ se $P(A,B\mid C)=P(A\mid C)\,P(B\mid C)$. Na classe multa baixa, o lado esquerdo deu 0,0668 e o direito 0,0742; na classe multa alta, 0,0403 e 0,0466. A diferença é pequena (menos de um ponto percentual), mas a igualdade não vale, e não foi feito teste estatístico. Assim, a suposição do Naive Bayes é só uma aproximação nos nossos dados.
+
+A lógica de primeira ordem lida com afirmações verdadeiras ou falsas, como ``todo auto da Amazônia tem multa alta''. Nos dados essa regra é falsa (só 67,3\% têm multa alta), e a lógica não consegue dizer ``67\% de chance''; a probabilidade guarda esse número.
+
+%% ------------------------------------------------------------
+\section{Etapa 4 -- Aprendizado probabilístico e EM}
+As Etapas 3 e 4 usam a mesma tabela e o mesmo rótulo da Etapa 1: 1847 autos de treino e 792 de teste externo (30\%, separação estratificada, semente 42). Autos do mesmo processo podem cair no treino e no teste, então as acurácias podem ficar um pouco otimistas.
+
+\subsection{MLE, MAP e Naive Bayes}
+Para um parâmetro de Bernoulli com $k$ sucessos em $n$ tentativas, a MLE é $\hat\theta = k/n$, e a MAP com prior Beta$(2,2)$ é $\hat\theta = (k+1)/(n+2)$, que puxa o valor para perto de 0,5 quando há poucos dados. Entre os 919 autos de multa alta do treino, 772 são da Amazônia: a MLE de $P(\text{Amazônia}\mid\text{multa alta})$ é $772/919 = 0{,}8400$ e a MAP é $773/921 = 0{,}8393$ (com tantos dados, quase iguais).
+
+O Naive Bayes foi feito do zero, com $P(y\mid x)\propto P(y)\prod_j P(x_j\mid y)$ e os seis atributos da Etapa 1 transformados em 26 colunas de 0 e 1. A probabilidade de cada coluna dada a classe usa a MAP acima, e a de cada classe usa suavização de Laplace. Na validação cruzada de 5 partes, só no treino, a acurácia foi 72,50\% $\pm$ 0,94\%, contra 50,24\% de quem sempre responde a classe mais comum. No teste externo foram 71,84\% de acurácia, 70,31\% de precisão, 75,13\% de recall e 72,64\% de F1, perto dos 74,0\% da árvore da Etapa 1.
+
+\subsection{Variável oculta e algoritmo EM}
+A variável oculta $Z$ representa o tipo de clima do mês e do estado. Ela não está nos dados e é inferida de chuva, temperatura média e umidade média (padronizadas com a média e o desvio do treino), modeladas por uma mistura de $K$ gaussianas. O passo E calcula a responsabilidade $r_{ik}=\theta_k\,\mathcal{N}(x_i\mid\mu_k,\Sigma_k)\big/\sum_j\theta_j\,\mathcal{N}(x_i\mid\mu_j,\Sigma_j)$, e o passo M atualiza $\theta_k=N_k/N$, $\mu_k=\sum_i r_{ik}x_i/N_k$ e $\Sigma_k$, com $N_k=\sum_i r_{ik}$. O algoritmo foi feito do zero (\texttt{em.py}), com contas em logaritmo e $10^{-6}$ somado à diagonal da covariância. Ele para quando a log-verossimilhança média melhora menos que $10^{-6}$ (no máximo 200 iterações), com 5 inicializações aleatórias e semente 42.
+
+Num teste com dois grupos sintéticos conhecidos (médias $[0,0]$ e $[5,4]$, pesos 0,6 e 0,4), o EM achou médias $[0{,}05;\,0{,}01]$ e $[5{,}01;\,3{,}97]$ e pesos 0,6 e 0,4, em 92 iterações. Nos dados reais, com $K=2$, convergiu em 25 iterações, e a log-verossimilhança só subiu (Figura~\ref{fig:loglik}). O $Z_0$ reúne meses chuvosos, quentes e úmidos, e o $Z_1$, meses secos e mais amenos (Tabela~\ref{tab:grupos}). Entre os autos de treino, 93,2\% têm clima completo; os demais ficam com $Z=$ \texttt{sem\_dado}.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+Grupo & Peso & Chuva (mm) & Temperatura (\textdegree C) & Umidade (\%) \\
+\midrule
+$Z_0$ & 0,582 & 192,2 & 26,2 & 79,1 \\
+$Z_1$ & 0,418 & 51,7 & 24,2 & 64,0 \\
+\bottomrule
+\end{tabular}
+\caption{Médias dos dois grupos de clima encontrados pelo EM ($K=2$).}
+\label{tab:grupos}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\textwidth]{figuras/loglik_em.png}
+\caption{Log-verossimilhança do EM ($K=2$) por iteração, nos dados reais.}
+\label{fig:loglik}
+\end{figure}
+
+\subsection{Naive Bayes puro e com $Z$}
+O $Z$ entrou como atributo do Naive Bayes, com o EM ajustado só no treino de cada parte da validação cruzada (Tabela~\ref{tab:nb_em}). Ele não melhorou o modelo: a queda na validação cruzada foi de 2,4 a 3,7 pontos percentuais, maior que o desvio entre as partes, e no teste externo o modelo com $Z$ errou 17 a 32 autos a mais, em 792. O enunciado espera de 80 a 86\% com EM, e isso não aconteceu. Trocar as faixas de clima pelo $Z$ também não ajudou.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Configuração & Validação cruzada (5 partes) & Teste externo \\
+\midrule
+Naive Bayes puro & 72,50\% $\pm$ 0,94\% & 71,84\% \\
+Naive Bayes + $Z$ ($K=2$) & 68,76\% $\pm$ 2,53\% & 69,19\% \\
+Naive Bayes + $Z$ ($K=3$) & 69,36\% $\pm$ 1,51\% & 69,70\% \\
+$Z$ ($K=2$) no lugar das faixas de clima & 70,06\% $\pm$ 1,95\% & 67,80\% \\
+\bottomrule
+\end{tabular}
+\caption{Acurácia do Naive Bayes sem e com a variável oculta $Z$.}
+\label{tab:nb_em}
+\end{table}
+
+O que aprendemos é que uma variável oculta só ajuda se trouxer informação nova sobre o alvo. O EM funcionou como algoritmo, mas o $Z$ é feito só de clima, e o clima pouco ajuda a prever a multa (na Etapa 1, o ganho de informação de chuva, temperatura e umidade é de 0,03 a 0,04, contra 0,18 do bioma). Além disso, o EM maximiza a verossimilhança do clima e não olha para o alvo, e o $Z$ é um resumo mais pobre que as faixas, que o Naive Bayes já recebia.
+
+%% ------------------------------------------------------------
+\section{Etapa 5 -- Redes Bayesianas}
+A rede usa cinco variáveis (\texttt{CHUVA\_FAIXA}, \texttt{TEMP\_FAIXA}, \texttt{BIOMA}, \texttt{TIPO\_ACAO} e \texttt{Multa\_Alta}) e cinco arestas, justificadas na Tabela~\ref{tab:arestas}. As justificativas são hipóteses do grupo, não provas. A aresta do bioma para a multa foi acrescentada depois de uma primeira versão em que a única causa da multa era o tipo de ação; nela, a probabilidade de multa alta só tinha três valores (entre 0,488 e 0,522). Como \texttt{Multa\_Alta} só tem \texttt{BIOMA} e \texttt{TIPO\_ACAO} como pais, chuva e temperatura não mudam a probabilidade que sai da rede.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{5.2cm}p{9.8cm}}
+\toprule
+Aresta & Justificativa \\
+\midrule
+\texttt{CHUVA\_FAIXA} $\to$ \texttt{TIPO\_ACAO} & o clima pode mudar quando a equipe consegue ir a campo \\
+\texttt{TEMP\_FAIXA} $\to$ \texttt{TIPO\_ACAO} & idem \\
+\texttt{BIOMA} $\to$ \texttt{TIPO\_ACAO} & o tipo de ação pode mudar de uma região para outra \\
+\texttt{TIPO\_ACAO} $\to$ \texttt{Multa\_Alta} & uma operação planejada pode achar infrações maiores \\
+\texttt{BIOMA} $\to$ \texttt{Multa\_Alta} & o bioma tem relação forte com a multa (Amazônia: 67,6\% altas) \\
+\bottomrule
+\end{tabular}
+\caption{Arestas da rede bayesiana.}
+\label{tab:arestas}
+\end{table}
+
+As tabelas de probabilidade condicional foram estimadas com o \texttt{BayesianEstimator} do pgmpy, com suavização BDeu (tamanho amostral equivalente 10), em 2618 autos (os 21 sem bioma ficaram fora do ajuste). A inferência foi feita por enumeração, do zero (multiplica as tabelas, soma sobre as variáveis ocultas e normaliza), e com a eliminação de variáveis do pgmpy; as duas deram o mesmo resultado nas três consultas testadas (Tabela~\ref{tab:inferencia}).
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{7.4cm}cc}
+\toprule
+Evidência & Enumeração & pgmpy \\
+\midrule
+\texttt{TIPO\_ACAO} = Operação & 0,5058 & 0,5058 \\
+\texttt{BIOMA} = Amazônia e \texttt{TIPO\_ACAO} = Rotina & 0,6418 & 0,6418 \\
+\texttt{BIOMA} = Caatinga & 0,0756 & 0,0756 \\
+\bottomrule
+\end{tabular}
+\caption{Probabilidade de multa alta dada a evidência.}
+\label{tab:inferencia}
+\end{table}
+
+Duas independências foram verificadas por d-separação. A primeira é um colisor: \texttt{CHUVA\_FAIXA} e \texttt{BIOMA} são pais de \texttt{TIPO\_ACAO}; sem evidência o caminho está fechado (independentes), e ao observar \texttt{TIPO\_ACAO} ele abre (dependentes). A segunda é uma cadeia: \texttt{TEMP\_FAIXA} e \texttt{Multa\_Alta} são dependentes, mas ficam independentes quando \texttt{TIPO\_ACAO} e \texttt{BIOMA} são conhecidos. A conjunta completa das cinco variáveis precisaria de 671 parâmetros e a rede precisa de 257, uma economia de 414. Para cada um dos 2639 autos foi calculada a probabilidade de multa alta dada a evidência do próprio auto (de 0,028 a 0,947, com 26 valores diferentes), e o resultado foi salvo para a Etapa 6.
+
+%% ------------------------------------------------------------
+\section{Etapa 6 -- Lógica fuzzy}
+Esta etapa constrói um sistema fuzzy do tipo Mamdani, proposto a partir da lógica fuzzy de \citeonline{zadeh1965}, que permite graus de pertinência entre 0 e 1 e se adapta à imprecisão da linguagem natural \cite{hullermeier2011}. Ele foi feito com a biblioteca \texttt{scikit-fuzzy} (\texttt{fuzzy.py}) e transforma duas informações do domínio em uma prioridade de atuação.
+
+\subsection{Variáveis, pertinências e regras}
+O sistema tem duas entradas e uma saída. \textbf{risco} (0 a 1) é a probabilidade de multa alta da rede da Etapa 5. \textbf{efeito} (0 a 3) vem da coluna \texttt{EFEITO\_\allowbreak MEIO\_\allowbreak AMBIENTE} do IBAMA \cite{ibama2021}, convertida em Desprezível $=0$, Fraca $=1$, Moderada $=2$ e Significativa $=3$ (81, 657, 528 e 613 autos). Os 760 restantes (559 ``Potencial'' e 201 vazios) ficaram fora da escala. \textbf{prioridade} (0 a 100) é a saída. Todas usam funções triangulares $[a,b,c]$ com três conjuntos que se sobrepõem (Tabela~\ref{tab:pertinencia} e Figura~\ref{fig:pert}). Os conjuntos de risco foram ajustados à distribuição das probabilidades da rede, que ficam em três grupos (perto de 0,1 a 0,2, de 0,4 e entre 0,65 e 0,7): numa primeira versão, com ``médio'' em $[0{,}2;\,0{,}5;\,0{,}8]$ e ``alto'' em $[0{,}6;\,1;\,1]$, quase nenhum auto chegava a prioridade alta.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Variável & Baixo / fraco / baixa & Médio / média & Alto / forte / alta \\
+\midrule
+risco & $[0,\,0,\,0{,}4]$ & $[0{,}2,\,0{,}45,\,0{,}7]$ & $[0{,}5,\,1,\,1]$ \\
+efeito & $[0,\,0,\,1{,}5]$ & $[0{,}5,\,1{,}5,\,2{,}5]$ & $[1{,}5,\,3,\,3]$ \\
+prioridade & $[0,\,0,\,50]$ & $[25,\,50,\,75]$ & $[50,\,100,\,100]$ \\
+\bottomrule
+\end{tabular}
+\caption{Parâmetros $[a,b,c]$ das funções de pertinência triangulares.}
+\label{tab:pertinencia}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figuras/pertinencias.png}
+\caption{Funções de pertinência de risco, efeito e prioridade.}
+\label{fig:pert}
+\end{figure}
+
+O sistema usa cinco regras, com E (mínimo) e OU (máximo), que cobrem todas as combinações das entradas; a saída vira número pelo centroide, e por isso a prioridade nunca chega exatamente a 0 ou a 100.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{cl}
+\toprule
+& Regra \\
+\midrule
+R1 & Se risco é alto E (efeito é médio OU forte), então prioridade é alta. \\
+R2 & Se risco é alto E efeito é fraco, então prioridade é média. \\
+R3 & Se risco é médio, então prioridade é média. \\
+R4 & Se risco é baixo E efeito é forte, então prioridade é média. \\
+R5 & Se risco é baixo E (efeito é fraco OU médio), então prioridade é baixa. \\
+\bottomrule
+\end{tabular}
+\caption{Base de regras do sistema fuzzy.}
+\label{tab:regras}
+\end{table}
+
+Para ver se o sistema responde de forma coerente, ele foi testado com valores digitados à mão, e não com resultados de algum modelo (Tabela~\ref{tab:teste}). A prioridade aumenta conforme o risco e o efeito aumentam.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ccc}
+\toprule
+risco & efeito & prioridade (fuzzy) \\
+\midrule
+0,10 & 0 & 17,5 \\
+0,45 & 1 & 50,0 \\
+0,55 & 2 & 54,1 \\
+0,80 & 3 & 81,4 \\
+0,95 & 3 & 83,2 \\
+\bottomrule
+\end{tabular}
+\caption{Testes com valores digitados à mão. Não são resultados da Rede Bayesiana.}
+\label{tab:teste}
+\end{table}
+
+A Figura~\ref{fig:sup} mostra a superfície de resposta do sistema. A prioridade é mais baixa (em torno de 17) quando risco e efeito são baixos e mais alta (cerca de 83) quando ambos são altos. Para risco perto de 0,45, a prioridade fica em torno de 50, qualquer que seja o efeito, o que corresponde à regra R3.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{figuras/superficie.png}
+\caption{Superfície de resposta: prioridade em função do risco e do efeito.}
+\label{fig:sup}
+\end{figure}
+
+
+
+\subsection{Alimentação pela rede e comparação com a decisão rígida}
+O sistema foi alimentado com as probabilidades da Etapa 5 (de 0,028 a 0,947; 706 autos até 0,2, 126 entre 0,2 e 0,4, 201 entre 0,4 e 0,6, 1600 entre 0,6 e 0,8 e 6 acima de 0,8). Como ele precisa do efeito, a comparação usou os 1879 autos que o têm. Os 760 sem efeito têm menos multas altas (40,7\%) do que os 1879 usados (53,4\%), então não são uma amostra aleatória. A decisão rígida chama de multa alta todo auto com risco de 0,5 ou mais; a prioridade do fuzzy foi dividida em baixa (menos de 33), média (33 a 66) e alta (66 ou mais).
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Decisão rígida & fuzzy baixa & fuzzy média & fuzzy alta \\
+\midrule
+BAIXA (risco menor que 0,5) & 462 & 267 & 0 \\
+ALTA (risco de 0,5 ou mais) & 0 & 611 & 539 \\
+\bottomrule
+\end{tabular}
+\caption{Decisão rígida e rótulo do fuzzy nos 1879 autos com efeito.}
+\label{tab:comparacao}
+\end{table}
+
+O fuzzy tem uma faixa do meio que a decisão rígida não tem: 878 dos 1879 autos (46,7\%) ficaram como prioridade média. Dos 1150 autos de decisão ALTA, 539 (46,9\%) também são alta no fuzzy e 611 (53,1\%) ficam no meio; nenhum auto de risco menor que 0,5 virou prioridade alta, e nenhum de risco 0,5 ou mais virou baixa. A prioridade média dos autos que de fato tiveram multa alta foi 66,6, contra 44,5 dos de multa baixa. Nos 132 autos de fronteira (risco entre 0,4 e 0,6), onde uma pequena mudança no risco inverte a decisão rígida, a prioridade ficou em 50,0 na maioria dos casos (máximo 57,1), qualquer que fosse o efeito: a decisão rígida os joga para lados opostos, e o fuzzy trata todos como prioridade média. O fuzzy usa também o efeito, os cortes de 33 e 66 foram escolhidos por nós, e a rede foi treinada com os mesmos autos comparados, então a comparação só descreve como as duas decisões se comportam, não mede qual acerta mais.
+
+Quanto à interpretabilidade, cada regra pode ser lida por alguém da área sem cálculo: a R1 diz que, com risco alto e efeito médio ou forte, a prioridade é alta, e dá para dizer qual regra foi mais ativada. O custo é que regras e limites foram escolhidos por nós, e a R3 não olha o efeito, então para risco médio a prioridade fica perto de 50 mesmo com efeito forte.
+
+%% ------------------------------------------------------------
+\section{Pipeline integrado e conclusões}
+Todas as etapas partem da mesma tabela (\texttt{tabela\_p4.csv}, 2639 autos), do mesmo rótulo \texttt{Multa\_Alta} e da semente 42 (Figura~\ref{fig:pipeline}). As setas tracejadas mostram o que uma etapa deixou para outra: a Etapa 1 mostrou que o bioma é o atributo mais informativo (ganho de 0,18), e por isso a rede tem a aresta do bioma para a multa; e a estimação com suavização da Etapa 4 (MAP e Laplace) reaparece nas tabelas da rede (BDeu). A única ligação por arquivo é da Etapa 5 para a Etapa 6: a probabilidade de multa alta de cada auto entra no fuzzy como \texttt{risco}, junto com o efeito, e sai a prioridade de atuação.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=3.5mm,
+  caixa/.style={draw, rounded corners=3pt, text width=7.4cm, minimum height=6.5mm, align=center, font=\small, fill=gray!8},
+  dado/.style={caixa, fill=white},
+  saida/.style={caixa, fill=gray!25, font=\small\bfseries},
+  seta/.style={-{Stealth[length=2.2mm]}, thick},
+  tracejada/.style={-{Stealth[length=2.2mm]}, thick, dashed}
+]
+\node[dado] (d) {Dados oficiais: IBAMA 2021 + INMET 2021 (2639 autos)};
+\node[caixa, below=of d] (e1) {Etapa 1: árvore de decisão (CV 74,0\%)};
+\node[caixa, below=of e1] (e2) {Etapa 2: regressão e logística (77,08\%)};
+\node[caixa, below=of e2] (e3) {Etapa 3: probabilidade e Bayes};
+\node[caixa, below=of e3] (e4) {Etapa 4: Naive Bayes e EM (CV 72,5\%)};
+\node[caixa, below=of e4] (e5) {Etapa 5: rede bayesiana (risco de 0,03 a 0,95)};
+\node[caixa, below=of e5] (e6) {Etapa 6: sistema fuzzy (prioridade de 0 a 100)};
+\node[saida, below=of e6] (f) {Decisão final interpretável};
+\foreach \a/\b in {d/e1,e1/e2,e2/e3,e3/e4,e4/e5,e5/e6,e6/f} \draw[seta] (\a) -- (\b);
+\draw[tracejada] (e1.east) -- ++(1.1,0) |- (e5.east);
+\draw[tracejada] (e4.west) -- ++(-1.1,0) |- (e5.west);
+\node[font=\scriptsize, align=left, anchor=west] at ([xshift=1.2cm]$(e1.east)!0.5!(e5.east)$) {bioma\\é o atributo\\mais informativo};
+\node[font=\scriptsize, align=right, anchor=east] at ([xshift=-1.2cm]$(e4.west)!0.5!(e5.west)$) {estimar com\\suavização};
+\end{tikzpicture}
+\caption{Pipeline do trabalho. As setas tracejadas indicam o que as Etapas 1 e 4 deixaram para a Etapa 5.}
+\label{fig:pipeline}
+\end{figure}
+
+Na classificação de \texttt{Multa\_Alta}, a árvore (Etapa 1) obteve 74,0\% de acurácia, o Naive Bayes (Etapa 4) 72,5\% e a regressão logística (Etapa 2) 77,08\% (71,97\% sem a UF, que os outros dois não usaram), e o $R^2$ máximo foi 0,392. Em todos os casos o bioma foi o atributo mais importante. Vários resultados ficaram abaixo das faixas do enunciado (regressão, logística e Naive Bayes com EM), e a explicação mais provável está nos dados: o valor da multa depende da área desmatada, que não está na tabela. A Etapa 1 mostrou, com o exemplo do Pampa, que uma regra aprendida pode ser derrubada por um único exemplo novo, o que justifica passar a modelos com probabilidades; e a Etapa 4 mostrou que uma variável oculta só ajuda se trouxer informação nova sobre o alvo.
+
+Na Etapa 6, o fuzzy recebeu o risco da rede e o efeito no meio ambiente. Ao contrário da decisão rígida (corte em 0,5), ele colocou os autos de fronteira em prioridade média e entrega uma recomendação que um especialista consegue ler e auditar regra por regra, embora isso não prove que acerte mais. Como melhorias, ficam a extração da área desmatada a partir do texto do auto e o uso de dados de clima com maior detalhe regional do que a média mensal por estado.
+
+%% ------------------------------------------------------------
+\bibliographystyle{abntex2-alf}
+\bibliography{referencias}
+\nocite{russell2020}
+
+\appendix
+\section{Prompts utilizados com chatbot}
+Conforme exigência do trabalho, esta seção documenta a rastreabilidade da interação com a Inteligência Artificial durante o desenvolvimento de cada etapa.
+
+\subsection*{Etapa 1 -- Árvore de decisão (Rafaelly Dos Anjos)}
+\begin{itemize}
+    \item \textbf{Pedido original:} "Como faço a árvore de decisão do zero no Python usando entropia e ganho de informação?" \\
+    \textbf{Resposta resumida:} Apresentou a lógica recursiva para calcular a entropia e o ganho em cada nó, ajudando na implementação manual da indução de regras.
+    
+    \item \textbf{Pedido original:} "Como explico a monotonicidade da lógica clássica pro relatório usando o exemplo empírico do bioma Pampa?" \\
+    \textbf{Resposta resumida:} Ajudou a redigir a análise teórica, relacionando a fragilidade das regras da lógica clássica com os dados reais encontrados no bioma Pampa.
+\end{itemize}
+
+\subsection*{Etapa 2 -- Aprendizado linear (Miguel Bezerra)}
+\begin{itemize}
+    \item \textbf{Pedido original:} "Como implemento a regressão linear múltipla por gradiente descendente do zero com regularização Ridge?" \\
+    \textbf{Resposta resumida:} Gerou a estrutura base iterativa e o código para aplicar a regularização Ridge usando validação cruzada para o lambda.
+    
+    \item \textbf{Pedido original:} "O R² das minhas regressões ficou em 0,392. Como justifico no texto que a limitação é a ausência da área desmatada nos dados?" \\
+    \textbf{Resposta resumida:} Forneceu argumentos técnicos defendendo que a métrica baixa se deve à limitação das variáveis da base do IBAMA, e não a falhas nos modelos.
+\end{itemize}
+
+\subsection*{Etapa 3 -- Probabilidade (Luís Abdalla)}
+\begin{itemize}
+    \item \textbf{Pedido original:} "O teste de fisher é citado pelo professor? Faça a última alteração necessária para entrega do código. \\
+    \textbf{Resposta resumida:} Orientou a fazer apenas a verificação matemática simples exigida no enunciado, sem adicionar testes estatísticos extras.
+    
+    \item \textbf{Pedido original:} "Faça uma correção detalhada sobre 'P(Amazônia | multa alta)' e a distinção entre direção causal plausível e escolha generativa do Naive Bayes. \\
+    \textbf{Resposta resumida:} Explicou a diferença teórica entre inferência causal e associação amostral, corrigindo uma imprecisão conceitual no relatório.
+\end{itemize}
+
+\subsection*{Etapa 4 -- Aprendizado probabilístico e EM (Hagata Rodrigues e Luís Abdalla)}
+\begin{itemize}
+    \item \textbf{Pedido original (Hagata):} "Me ajuda a fazer o algoritmo EM do zero pra mistura de gaussianas sem dar erro numérico de logaritmo?" \\
+    \textbf{Resposta resumida:} Trouxe a lógica de cálculos no espaço logarítmico para manter a estabilidade matemática do código e plotar a convergência corretamente.
+    
+    \item \textbf{Pedido original (Luís):} "Me mande a última versão do código, com todos os requisitos do professor, saída limpa e pronto para ser anexado no github. \\
+    \textbf{Resposta resumida:} Entregou o código final formatado, limpo e estruturado para ser enviado diretamente ao repositório.
+\end{itemize}
+
+
+\subsection*{Etapa 5 -- Redes Bayesianas (Maria Penha)}
+\begin{itemize}
+    \item \textbf{Pedido original:} ``Como fazer o cálculo da economia de parâmetros?'' \\
+    \textbf{Resposta resumida:} Explicou que, na conjunta completa, multiplica-se o número de estados de todas as variáveis e subtrai-se 1, o que cresce de forma exponencial. Na rede bayesiana, calcula-se só o espaço das tabelas de probabilidade condicional de cada nó, a partir dos seus pais, $(r-1)\times q$, e somam-se os valores. A subtração do total da rede do valor da conjunta completa dá a economia.
+
+\end{itemize}
+
+\subsection*{Etapa 6 -- Lógica fuzzy (Adrya Vieira)}
+\begin{itemize}
+    \item \textbf{Pedido original:} "Como construo as funções de pertinência triangulares pro 'risco' e 'efeito' no scikit-fuzzy usando a saída da rede bayesiana?" \\
+    \textbf{Resposta resumida:} Mostrou como integrar os limites da biblioteca fuzzy e calibrar a variável de risco utilizando as probabilidades extraídas da etapa anterior.
+    
+    \item \textbf{Pedido original:} "Como escrevo a comparação da decisão rígida (corte em 0,5) com o fuzzy, destacando que o fuzzy põe os autos da fronteira na média?" \\
+    \textbf{Resposta resumida:} Estruturou a argumentação para o relatório focando na interpretabilidade da transição suave dos autos limítrofes.
+\end{itemize}
+
+\end{document}
